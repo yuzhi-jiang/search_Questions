@@ -1,0 +1,364 @@
+package 抓包;
+
+import cn.hutool.core.text.UnicodeUtil;
+import cn.hutool.json.JSONArray;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
+import org.apache.http.Header;
+import org.apache.http.HttpEntity;
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.message.BasicHeader;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
+import java.awt.event.*;
+import java.io.*;
+import java.net.URL;
+import java.net.URLEncoder;
+
+public class main extends JDialog {
+    private JPanel contentPane;
+    private JTextField question;
+    private JTextArea anstext;
+    private JButton select;
+    private JButton clearButton;
+    JPopupMenu popup = new JPopupMenu();
+
+    public void cleartext() {
+        anstext.setText("");
+        question.setText("");
+    }
+
+    static boolean hasCopy ;
+    static boolean hasPaste;
+    public main() {
+        hasCopy=false;
+        hasPaste=false;
+        this.setLocation(500, 300);
+        this.setSize(400, 400);
+        this.setTitle("查题工具");
+        this.setAlwaysOnTop(true);
+        setContentPane(contentPane);
+        setModal(true);
+        anstext.setEditable(false);
+        anstext.setLineWrap(true);
+        select.setSize(350, 50);
+
+
+//          hasCopy=hasPaste=false;
+        question.addMouseListener(new MouseAdapter() {
+
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                super.mouseClicked(e);
+                if (e.getButton() == MouseEvent.BUTTON3) {
+                    if (getClipboardString().length() > 0 && !hasPaste) {
+
+                        hasPaste = true;
+                        popup.add(createMenuItem(null, "paste", "粘贴"));
+                    }
+                    if (question.getText().length() > 0 && !hasCopy) {
+
+                        popup.add(createMenuItem(null, "copy", "复制"));
+                        hasCopy = true;
+                    }
+                    popup.show(contentPane, e.getX(), e.getY());
+                }
+            }
+        });
+
+        select.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                anstext.setText("");
+                String question = main.this.question.getText();
+                if (question.length() > 0) {
+
+                    String ans = getAllAns(question);
+                    anstext.setText(ans);
+                } else {
+                    JOptionPane.showMessageDialog(contentPane, "what is your question");
+                }
+            }
+        });
+
+        clearButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                cleartext();
+
+            }
+        });
+
+        // call onCancel() when cross is clicked
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            public void windowClosing(WindowEvent e) {
+                onCancel();
+            }
+
+            public void windowIconified(WindowEvent e) { // 窗口最小化事件
+
+                setVisible(false);
+                //     MServer.miniTray();
+
+            }
+
+        });
+
+        // call onCancel() on ESCAPE
+        contentPane.registerKeyboardAction(new ActionListener() {
+            public void actionPerformed(ActionEvent e) {
+                onCancel();
+            }
+        }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+    }
+
+    private void onOK() {
+        // add your code here
+        dispose();
+    }
+
+    private void onCancel() {
+        // add your code here if necessary
+        dispose();
+    }
+
+    public static void main(String[] args) {
+        main dialog = new main();
+        dialog.pack();
+        dialog.setLocation(340, 400);
+        dialog.setSize(600, 300);
+        dialog.setVisible(true);
+        System.exit(0);
+    }
+
+
+    ////////////////////////////不对外方法//////////////////////////////////
+
+    private static String getAnswerFromJson(String Json, boolean isall) {
+        String res = "";
+        if (Json.length() == 0 || Json.equals("")) return res;
+        JSONObject jsonObject = JSONUtil.parseObj(Json);
+        // System.out.println("code " + jsonObject.get("code"));
+        JSONArray qs = jsonObject.getJSONArray("qs");
+        JSONObject jsonObject1 = null;
+        if (jsonObject.getInt("code") == 200 && !isall) {
+            jsonObject1 = qs.getJSONObject(0);
+            // System.out.println("问题："+jsonObject1.getStr("q"));
+            //  System.out.println("答案："+jsonObject1.get("a"));
+
+            res = "问题：" + jsonObject1.getStr("q") + " \n 答案: " + jsonObject1.getStr("a");
+        } else if (jsonObject.getInt("code") == 200 && isall) {
+            for (int i = 0; i < qs.size(); i++) {
+                jsonObject1 = qs.getJSONObject(i);
+                res += "问题：" + jsonObject1.getStr("q") + " \n 答案: " + jsonObject1.getStr("a") + "\n";
+            }
+        } else {
+            res = "没有找到答案\n请认证后再试试" + "https://www.milahome.cn/verify_me?token=oVCAS5X3CsXu91nkbWVWWtDp7AgE&t=1609672916831";
+        }
+        return res;
+    }
+
+    private ActionListener copyActionListner() {
+        ActionListener actionListener = new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                setClipboardString(question.getText());
+            }
+        };
+        return actionListener;
+    }
+
+    private ActionListener pasteActionListner() {
+        ActionListener actionListener = new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+
+                question.setText(getClipboardString());
+            }
+        };
+        return actionListener;
+    }
+
+    /**
+     * 把文本设置到剪贴板（复制）
+     */
+    public void setClipboardString(String text) {
+        // 获取系统剪贴板
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        // 封装文本内容
+        Transferable trans = new StringSelection(text);
+        // 把文本内容设置到系统剪贴板
+        clipboard.setContents(trans, null);
+    }
+
+
+    /**
+     * 从剪贴板中获取文本（粘贴）
+     */
+    public static String getClipboardString() {
+        // 获取系统剪贴板
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+
+        // 获取剪贴板中的内容
+        Transferable trans = clipboard.getContents(null);
+
+        if (trans != null) {
+            // 判断剪贴板中的内容是否支持文本
+            if (trans.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                try {
+                    // 获取剪贴板中的文本内容
+                    String text = (String) trans.getTransferData(DataFlavor.stringFlavor);
+                    return text;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    protected JMenuItem createMenuItem(String iceName, String action, String text) {
+        JMenuItem item = new JMenuItem(text);
+        item.setActionCommand(action);
+        if (action.equals("copy"))
+            item.addActionListener(copyActionListner());
+        else if (action.equals("paste"))
+            item.addActionListener(pasteActionListner());
+        if (iceName != null) {
+            String imagePath = "/images/" + iceName;
+            URL imageURL = getClass().getResource(imagePath);
+            item.setIcon(new ImageIcon(imageURL));
+        }
+        return item;
+    }
+
+    private static CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+
+    private static String getAnswerJsonString(String problem) {
+        String res = "";
+        if (problem.length() == 0 || problem.equals("")) return res;
+
+        String host = "https://www.milahome.cn/api/searchApi";
+        String helder = "Host: www.milahome.cn\n" +
+                "Connection: keep-alive\n" +
+//                "Content-Length: 446\n" +
+                "User-Agent: Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36\n" +
+                "Content-type: application/x-www-form-urlencoded; charset=UTF-8\n" +
+//                "Content-type: application/josn; charset=UTF-8\n" +
+                "Accept: */*\n" +
+                "Origin: chrome-extension://bblkpdkdloalbiifhhmekiaejmdkgohj\n" +
+                "Sec-Fetch-Site: none\n" +
+                "Sec-Fetch-Mode: cors\n" +
+                "Sec-Fetch-Dest: empty\n" +
+                "Accept-Encoding: gzip, deflate, br\n" +
+                "Accept-Language: zh-CN,zh;q=0.9\n" +
+                "Cookie: auth_token=oVCAS5X3CsXu91nkbWVWWtDp7AgE; yp_riddler_id=8de42615-5028-4885-a98b-883e2cc2df03; XSRF-TOKEN=eyJpdiI6IlwvaFwvUkd0REZvajYwWXdmbk9NdW81Zz09IiwidmFsdWUiOiJzVW9lcXUyV1l0VkdyTDJQenk1WTljTEFIUHF2U00rbVB5TGR6YTZqN2VGemZMTHVWTzVseGxvYVhiQ1JyRm9yIiwibWFjIjoiYmY0NDdlY2M0MDgyNWM5YmI3OGQzMTA2ZjUxYTE2ZjAyYzc3ODFkMGFmNGRiNzJmN2UxNDMyYjhkZjVlOWJhOCJ9; laravel_session=eyJpdiI6Imt5UUFxdktIVHk0N1BcL3BQQ3BrSmJBPT0iLCJ2YWx1ZSI6IkI3dnFUVURWOWJ1MUZmUjN0YVpqMVlEVHBkMlVMUVNWdWxwWXY1UmNYXC9saGhtUDQzc3JkU1ZQOWVQYVJlRFhzIiwibWFjIjoiMTRhOGYzZTk0NTE2NjgyMTVjZTQ0NzdkYzNlN2RlMGQ5ZDUyYzI1YjUxMTg3YTUzZTkwNmJiODZhYjNjMWU4OCJ9";
+        Header[] headersFromString = getHeadersFromString(helder);
+        StringBuffer params = new StringBuffer();
+        try {
+            // 字符数据最好encoding以下;这样一来，某些特殊字符才能传过去(如:某人的名字就是“&”,不encoding的话,传不过去)
+            params.append("token=oVCAS5X3CsXu91nkbWVWWtDp7AgE&");
+            params.append("wd=" + URLEncoder.encode(problem, "utf-8"));
+        } catch (UnsupportedEncodingException e1) {
+            e1.printStackTrace();
+        }
+
+        HttpPost post = new HttpPost(host + "?" + params);
+        post.setHeaders(headersFromString);
+
+        try {
+            CloseableHttpResponse response = httpClient.execute(post);
+            HttpEntity responseEntity = response.getEntity();
+            if (responseEntity != null) {
+
+                res = UnicodeUtil.toString(Getcontent(responseEntity));
+
+            }
+
+
+        } catch (ClientProtocolException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+//            try {
+//                // 释放资源
+//                if (httpClient != null) {
+//                    httpClient.close();
+//                }
+//
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+        }
+
+
+        if (res == "" || res.equals("")) {
+            res = "没有找到";
+        }
+        return res;
+    }
+
+    private static String getAllAns(String question) {
+        return getAnswerFromJson(getAnswerJsonString(question), true);
+    }
+
+
+    public static Header[] getHeadersFromString(String str) {
+        String[] split = str.split("\n");
+        int length = split.length;
+        Header[] headers = new Header[length];
+        for (int i = 0; i < length; i++) {
+            String s = split[i];
+            int indexOf = s.indexOf(":");
+            headers[i] = new BasicHeader(s.substring(0, indexOf), s.substring(indexOf + 1).replaceAll(" ", ""));
+            //  System.out.println("header"+i+" "+headers[i].getName()+"->"+headers[i].getValue());
+        }
+
+
+        return headers;
+    }
+
+    /*
+     * 對於給定的entity得到它的數據返回
+     *
+     * */
+    public static String Getcontent(HttpEntity entity) {
+        InputStream in = null;
+        try {
+            in = entity.getContent();
+            StringBuffer content = new StringBuffer();
+            try {
+                BufferedReader buffer = new BufferedReader(new InputStreamReader(in, "utf-8"));
+
+                String line = null;
+                while (null != (line = buffer.readLine())) {
+                    content.append(line + "\n");
+                }
+            } finally {
+                if (in != null) {
+                    in.close();
+                    return content.toString();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
+
+}
